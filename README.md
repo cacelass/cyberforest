@@ -33,7 +33,7 @@ Los siguientes archivos se han excluido porque sus tipos de ataque ya están cub
 - `Friday-WorkingHours-Morning.pcap_ISCX.csv` (DDoS y ataques web redundantes)
 - `Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv` (DDoS redundante)
 
-> ⚠️ **Nota:** El dataset completo contiene más archivos, pero esta selección mantiene todas las clases de ataque sin pérdida de variedad y reduce el volumen de datos a procesar.
+> **Nota:** El dataset completo contiene más archivos, pero esta selección mantiene todas las clases de ataque sin pérdida de variedad y reduce el volumen de datos a procesar.
 
 ---
 
