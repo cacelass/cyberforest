@@ -10,7 +10,7 @@
 
 ## Datos
 
-Este proyecto utiliza el dataset **CIC-IDS2017**. Los archivos CSV originales no se incluyen en este repositorio debido a su gran tamaño (varios GB).
+Este proyecto utiliza el dataset **CIC-IDS2017**. Los archivos CSV originales no se incluyen en este repositorio debido a su gran tamaño.
 
 Para reproducir el proyecto:
 
