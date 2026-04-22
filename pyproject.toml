@@ -1,0 +1,88 @@
+[project]
+name = "cyberforest"
+version = "0.1.0"
+description = "ForestGuard es un modelo de aprendizaje automático supervisado diseñado para detectar y clasificar diferentes tipos de ciberataques en redes informáticas. Utiliza un Random Forest (bosque de 100 árboles de decisión) entrenado con datasets de referencia como CIC-IDS2017, logrando alta precisión en entornos con tráfico desbalanceado y ataques heterogéneos."
+authors = [
+  { name = "Alejandro Cancelas Chapela" }
+]
+readme = "README.md"
+requires-python = ">= 3.12"
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "plotly",
+    "jupyter",
+    "jupyterlab",
+    "python-dotenv",
+    "missingno",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "invoke",
+    "nbdime",
+    "ruff",
+    "pytest",
+    "sphinx",
+]
+
+# ML supervisado: clasificación + PCA opcional como preprocesado
+supervisado = [
+    "scikit-learn",   # modelos, PCA, pipelines, métricas
+    "scipy",          # stats, tests de normalidad, dendrogramas
+    "lightgbm",
+    "xgboost",
+    "statsmodels",
+    "imbalanced-learn",
+    "joblib",
+]
+
+# ML no supervisado: clustering + reducción de dimensionalidad
+no_supervisado = [
+    "scikit-learn",   # KMeans, AgglomerativeClustering, PCA, DBSCAN
+    "scipy",          # dendrogramas y clustering jerárquico
+    "yellowbrick",    # SilhouetteVisualizer
+    "umap-learn",     # reducción de dimensionalidad no lineal (UMAP)
+    "hdbscan",        # clustering basado en densidad jerárquico
+    "joblib",
+]
+
+# Redes neuronales: deep learning con PyTorch + Polars
+redes_neuronales = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "torchmetrics[visual]",
+    "tensorboard",
+    "polars",         # carga eficiente de datos con dtypes explícitos
+    "scikit-learn",   # PCA, métricas, preprocesado
+    "scipy",
+    "joblib",
+]
+
+# Modelos híbridos: combinan técnicas supervisadas y no supervisadas
+# Casos de uso:
+#   - PCA/UMAP → reducir dimensiones → clasificador
+#   - KMeans → distancias a centroides como features → RF/LogReg
+#   - IsolationForest → score de anomalía como feature → clasificador
+#   - Semi-supervisado: LabelPropagation / LabelSpreading
+hibrido = [
+    "scikit-learn",   # PCA, KMeans, IsolationForest, pipelines, semi-supervisado
+    "scipy",          # estadísticos, tests de normalidad
+    "umap-learn",     # UMAP como alternativa a PCA (no lineal)
+    "lightgbm",       # clasificador final potente
+    "xgboost",        # clasificador final alternativo
+    "imbalanced-learn",
+    "joblib",
+]
+
+[tool.setuptools]
+packages = ["cyberforest"]
+
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
