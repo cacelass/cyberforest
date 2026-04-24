@@ -38,6 +38,7 @@ def load_data(filename=None) -> pd.DataFrame:
         file_path = RAW_DATA_DIR / fname
         print(f"--> Cargando {file_path}...")
         df = pd.read_csv(file_path, low_memory=False)
+        df.columns = df.columns.str.strip()
         print(f"    Shape: {df.shape}")
         dfs.append(df)
     
