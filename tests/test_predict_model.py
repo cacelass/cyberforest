@@ -10,13 +10,16 @@ import pytest
 from cyberforest.models.predict_model import (
     evaluate_models,
     predict_new,
+
     predict_proba_new,
     _plot_confusion_matrix,
+
 )
 from cyberforest.models.train_model import train_models
 
 
 def _make_data():
+
     from sklearn.datasets import make_classification
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import StandardScaler
@@ -26,6 +29,7 @@ def _make_data():
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
     return train_test_split(X, y, test_size=0.25, random_state=42)
+
 
 
 def test_evaluate_models_returns_dataframe(patch_paths):
@@ -41,8 +45,11 @@ def test_evaluate_models_columns(patch_paths):
     X_train, X_test, y_train, y_test = _make_data()
     trained = train_models(X_train, y_train, tune_knn=False, cv_evaluate=False)
     df_res = evaluate_models(trained, X_train, y_train, X_test, y_test)
+
     for col in ["Modelo", "Acc_train", "Acc_test", "F1_train", "F1_test"]:
         assert col in df_res.columns, f"Falta columna: {col}"
+
+
 
 
 def test_evaluate_models_accuracy_in_range(patch_paths):
@@ -63,12 +70,13 @@ def test_evaluate_models_saves_confusion_matrices(patch_paths):
     assert len(pngs) == len(trained)
 
 
+
 def test_evaluate_models_saves_csv(patch_paths):
-    """Debe guardar resultados_modelos.csv en FIGURES_DIR."""
+    """Debe guardar resultados_modelos.csv en REPORTS_DIR."""
     X_train, X_test, y_train, y_test = _make_data()
     trained = train_models(X_train, y_train, tune_knn=False, cv_evaluate=False)
     evaluate_models(trained, X_train, y_train, X_test, y_test)
-    assert (patch_paths["FIGURES_DIR"] / "resultados_modelos.csv").exists()
+    assert (patch_paths["REPORTS_DIR"] / "resultados_modelos.csv").exists()
 
 
 def test_predict_new_after_train(patch_paths):
@@ -77,13 +85,16 @@ def test_predict_new_after_train(patch_paths):
     train_models(X_train, y_train, tune_knn=False, cv_evaluate=False)
     preds = predict_new("RandomForest", X_test)
     assert len(preds) == len(X_test)
+
     assert set(preds).issubset({0, 1})
+
 
 
 def test_predict_new_raises_if_missing(patch_paths):
     """predict_new debe lanzar FileNotFoundError si el modelo no existe."""
     with pytest.raises(FileNotFoundError):
         predict_new("ModeloInexistente", np.zeros((5, 4)))
+
 
 
 def test_predict_proba_new_shape(patch_paths):
@@ -96,9 +107,7 @@ def test_predict_proba_new_shape(patch_paths):
 
 
 def test_predict_proba_new_raises_for_no_proba(patch_paths):
-    """predict_proba_new debe fallar si el modelo no tiene predict_proba."""
-    # DecisionTree sí tiene predict_proba; usamos un ejemplo que no lo tiene
-    # Si no existe el modelo, debe fallar con FileNotFoundError
+    """predict_proba_new debe fallar si el modelo no existe."""
     with pytest.raises(Exception):
         predict_proba_new("ModeloSinProba", np.zeros((5, 4)))
 
@@ -109,9 +118,9 @@ def test_custom_threshold(patch_paths):
     trained = train_models(X_train, y_train, tune_knn=False, cv_evaluate=False)
     df_low  = evaluate_models(trained, X_train, y_train, X_test, y_test, threshold=0.3)
     df_high = evaluate_models(trained, X_train, y_train, X_test, y_test, threshold=0.7)
-    # Los recalls con threshold bajo deben ser >= los del alto (en general)
     assert isinstance(df_low,  pd.DataFrame)
     assert isinstance(df_high, pd.DataFrame)
+
 
 
 

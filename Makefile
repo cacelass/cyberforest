@@ -1,8 +1,10 @@
 .PHONY: setup install-deps \
         data features train predict \
-        test lint format \
-        lab notebook \
+        test smoke lint format \
+        lab notebook tb \
         docs \
+        profile \
+        mlflow \
         clean clean-models clean-figures clean-all \
         run info help
 
@@ -21,7 +23,7 @@ PYTHON   = python
 help:
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "  CyberForest  ·  ML: $(ML_TYPE)"
+	@echo "  cyberforest  ·  ML: $(ML_TYPE)"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
 	@echo "  Entorno"
@@ -37,7 +39,8 @@ help:
 	@echo "    make pipeline       data → features → train → predict (todo)"
 	@echo ""
 	@echo "  Calidad"
-	@echo "    make test           pytest -v"
+	@echo "    make test           pytest -v (todos los tests)"
+	@echo "    make smoke          test de humo — verifica que el pipeline arranca"
 	@echo "    make lint           ruff check (solo lectura, sin modificar)"
 	@echo "    make format         ruff format (aplica cambios en sitio)"
 	@echo ""
@@ -45,6 +48,11 @@ help:
 	@echo "    make lab            JupyterLab  (puerto 8888)"
 	@echo "    make notebook       Jupyter Notebook (puerto 8888)"
 	@echo ""
+	@echo "  Ejecución directa"
+	@echo "    make run            ejecuta main.py"
+	@echo "    make profile        cProfile de main.py → reports/profile.prof"
+	@echo ""
+
 	@echo "  Documentación"
 	@echo "    make docs           sphinx-apidoc + html"
 	@echo ""
@@ -108,11 +116,20 @@ pipeline: predict
 run:
 	uv run $(PYTHON) main.py
 
+profile:
+	@echo "▶  Profiling main.py → reports/profile.prof"
+	uv run $(PYTHON) -m cProfile -o reports/profile.prof main.py
+	@echo "   Visualiza con: uv run snakeviz reports/profile.prof"
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Calidad de código
 # ─────────────────────────────────────────────────────────────────────────────
 test:
 	uv run pytest tests/ -v
+
+smoke:
+	@echo "▶  Test de humo — pipeline con datos sintéticos"
+	uv run pytest tests/ -v -m smoke --tb=short
 
 lint:
 	uv run ruff check $(MODULE)/ tests/
@@ -129,6 +146,17 @@ lab:
 
 notebook:
 	uv run jupyter notebook --ip=* --port=8888 --no-browser
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  MLflow UI
+# ─────────────────────────────────────────────────────────────────────────────
+mlflow:
+	@echo "Lanzando MLflow UI en http://localhost:5000"
+	uv run mlflow ui --port 5000
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Documentación
@@ -163,7 +191,7 @@ clean-all: clean clean-models clean-figures
 info:
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "  Proyecto  : CyberForest"
+	@echo "  Proyecto  : cyberforest"
 	@echo "  Módulo    : $(MODULE)"
 	@echo "  ML tipo   : $(ML_TYPE)"
 	@echo "  Python    : $(shell uv run python --version 2>/dev/null || python --version)"

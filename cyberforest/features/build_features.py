@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
 from sklearn.decomposition import PCA
 import joblib
+from loguru import logger
 from cyberforest.utils.paths import PROCESSED_DATA_DIR, ARTIFACTS_DIR
 
 
@@ -24,6 +25,11 @@ COLS_TO_DROP: list = [
     # "duration",     # fuga de datos
     # "nr_employed",  # alta correlación con euribor3m
 ]
+
+# Columnas a las que aplicar transformación logarítmica (np.log1p).
+# Útil para features con distribución muy sesgada (skewness > 1).
+# Ejemplo: ["amount", "salary", "tenure_days"]
+LOGCOLS: list = []
 
 
 def preprocess_data(
@@ -73,6 +79,9 @@ def preprocess_data(
     # 2. Feature engineering
     df = _feature_engineering(df)
 
+    # 2.5 Transformación logarítmica
+    df = _apply_logcols(df, LOGCOLS)
+
     # 3. Codificación ordinal
     for col, mapping in ORDINAL_MAPPINGS.items():
         if col in df.columns:
@@ -97,19 +106,34 @@ def preprocess_data(
         X[col] = X[col].fillna(X[col].mode()[0])
 
     # 7. LabelEncoder
+    encoders = {}  # guardamos un encoder por columna categórica para reproducibilidad
     le = LabelEncoder()
     for col in cat_cols:
-        X[col] = le.fit_transform(X[col].astype(str))
+        le_col = LabelEncoder()
+        X[col] = le_col.fit_transform(X[col].astype(str))
+        encoders[col] = le_col
 
     if y.dtype == object or str(y.dtype) == "category":
-        y = le.fit_transform(y.astype(str))
-        joblib.dump(le, ARTIFACTS_DIR / "target_encoder.joblib")
+        le_target = LabelEncoder()
+        y = le_target.fit_transform(y.astype(str))
+        encoders["__target__"] = le_target
+        joblib.dump(le_target, ARTIFACTS_DIR / "target_encoder.joblib")
         print("    Target codificado → target_encoder.joblib")
+
+    # Guardar todos los encoders en un único joblib (reproducibilidad inferencia)
+    joblib.dump(encoders, ARTIFACTS_DIR / "encoders.joblib")
+    if encoders:
+        cols_encoded = [c for c in encoders if c != "__target__"]
+        print(f"    Encoders guardados → encoders.joblib  ({cols_encoded})")
 
     # 8. Split estratificado
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y,
     )
+
+    # Guardar nombres de features originales (antes de PCA) para test_model()
+    joblib.dump(list(X.columns), ARTIFACTS_DIR / "feature_names.joblib")
+    print(f"    feature_names.joblib guardado ({len(X.columns)} features)")
 
     # 9. Escalado
     scaler = MinMaxScaler() if scaler_type == "minmax" else StandardScaler()
@@ -117,6 +141,11 @@ def preprocess_data(
     X_test  = scaler.transform(X_test)
     joblib.dump(scaler, ARTIFACTS_DIR / "scaler.joblib")
     print(f"    Scaler guardado → scaler.joblib")
+
+    # threshold.joblib se genera DESPUÉS del entrenamiento, no aquí.
+    # Descomenta find_best_threshold en predict_model.py (solo binaria) y
+    # guárdalo al final de train_model.py:
+    #   joblib.dump(best_threshold, ARTIFACTS_DIR / "threshold.joblib")
 
     # 10. PCA opcional
     if use_pca is not None:
@@ -179,16 +208,67 @@ def _feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _apply_logcols(df: pd.DataFrame, cols: list) -> pd.DataFrame:
+    """
+    Aplica transformación logarítmica np.log1p() a las columnas indicadas.
+
+    Úsala con features numéricas de distribución muy sesgada (skewness > 1)
+    para acercarlas a una distribución normal antes del escalado.
+
+    Parameters
+    ----------
+    df   : DataFrame con las columnas a transformar.
+    cols : Lista de nombres de columna. Las columnas que no existan en df
+           se ignoran con un aviso. Ejemplo: LOGCOLS = ["amount", "tenure_days"]
+
+    Notes
+    -----
+    - np.log1p(x) = log(1 + x) → evita log(0) cuando hay ceros.
+    - Para valores negativos, aplica primero un offset: x - x.min() + 1.
+    - Configura LOGCOLS en la sección de constantes de este fichero.
+    """
+    if not cols:
+        return df
+
+    df = df.copy()
+    applied, skipped = [], []
+
+    for col in cols:
+        if col not in df.columns:
+            skipped.append(col)
+            continue
+        if df[col].min() < 0:
+            offset = -df[col].min() + 1
+            df[col] = np.log1p(df[col] + offset)
+            logger.warning(f"logcols | '{col}' tiene valores negativos → offset {offset:.4f} aplicado antes de log1p")
+        else:
+            df[col] = np.log1p(df[col])
+        applied.append(col)
+
+    if applied:
+        logger.info(f"logcols | log1p aplicado → {applied}")
+    if skipped:
+        logger.warning(f"logcols | columnas no encontradas (ignoradas) → {skipped}")
+
+    return df
+
+
 def process_input(df_new: pd.DataFrame) -> np.ndarray:
     """
     Preprocesa nuevos datos para inferencia usando los artefactos guardados.
-    Aplica: feature_engineering → ordinal → drop → encode → scaler → PCA (si existe).
+    Aplica: feature_engineering → ordinal → drop → encode (encoders.joblib)
+            → scaler → PCA (si existe).
+
+    Los encoders.joblib garantizan que el mapping de categorías sea idéntico
+    al del entrenamiento, evitando silenciosos errores de codificación.
     """
     import os
-    scaler = joblib.load(ARTIFACTS_DIR / "scaler.joblib")
+    scaler   = joblib.load(ARTIFACTS_DIR / "scaler.joblib")
+    encoders = joblib.load(ARTIFACTS_DIR / "encoders.joblib") if (ARTIFACTS_DIR / "encoders.joblib").exists() else {}
 
     df_new = df_new.copy()
     df_new = _feature_engineering(df_new)
+    df_new = _apply_logcols(df_new, LOGCOLS)
 
     for col, mapping in ORDINAL_MAPPINGS.items():
         if col in df_new.columns:
@@ -199,9 +279,15 @@ def process_input(df_new: pd.DataFrame) -> np.ndarray:
         df_new.drop(columns=cols_present, inplace=True)
 
     cat_cols = df_new.select_dtypes(exclude=[np.number]).columns
-    le = LabelEncoder()
     for col in cat_cols:
-        df_new[col] = le.fit_transform(df_new[col].astype(str))
+        if col in encoders:
+            # Usar el mismo encoder del entrenamiento → mismo mapping de clases
+            le = encoders[col]
+            df_new[col] = le.transform(df_new[col].astype(str))
+        else:
+            # Fallback: re-fit (puede diferir del entrenamiento si hay categorías nuevas)
+            le = LabelEncoder()
+            df_new[col] = le.fit_transform(df_new[col].astype(str))
 
     num_cols = df_new.select_dtypes(include=[np.number]).columns
     df_new[num_cols] = df_new[num_cols].fillna(df_new[num_cols].mean())

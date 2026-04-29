@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.abspath('../../src/'))
 
 
 project = 'cyberforest'
-copyright = '2025, Alejandro Cancelas Chapela'
-author = 'Alejandro Cancelas Chapela'
+copyright = '2025, Cacelas'
+author = 'Cacelas'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

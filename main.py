@@ -7,6 +7,9 @@ from cyberforest.data.make_dataset import load_data
 from cyberforest.features.build_features import preprocess_data
 from cyberforest.models.train_model import train_models
 from cyberforest.models.predict_model import evaluate_models, DECISION_THRESHOLD
+
+from cyberforest.models.predict_model import test_model
+
 from cyberforest.visualization.visualize import (
     plot_distributions,
     plot_correlation_matrix,
@@ -19,7 +22,7 @@ from cyberforest.visualization.visualize import (
 # ---------------------------------------------------------------------------
 # Configuracion
 # ---------------------------------------------------------------------------
-DATA_FILE    = 'data/raw/dataset.csv'
+DATA_FILE    = 'dataset.csv'
 TARGET_COL   = 'target'
 SCALER_TYPE  = 'standard'   # 'standard' | 'minmax'
 TEST_SIZE    = 0.2
@@ -30,7 +33,7 @@ THRESHOLD    = DECISION_THRESHOLD
 USE_PCA      = None   # ← ajusta: None | 0.95 | 10
 
 
-def main():
+def run_full_pipeline() -> None:
     print('=' * 60)
     print('1. Cargando datos...')
     df = load_data(DATA_FILE)
@@ -79,6 +82,18 @@ def main():
     print('Pipeline completado.')
     best = df_results.sort_values('Acc_test', ascending=False).iloc[0]
     print(f'Mejor modelo: {best.to_dict()}')
+
+
+def main():
+    print('=' * 60)
+    accion = input('Ejecutar pipeline completo (0) o probar el modelo (1)? (0/1): ').strip()
+    if accion == '0':
+        run_full_pipeline()
+    elif accion == '1':
+        test_model()
+    else:
+        print('Opción no válida. Ejecutando pipeline completo por defecto.')
+        run_full_pipeline()
 
 
 if __name__ == '__main__':

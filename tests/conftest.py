@@ -1,6 +1,6 @@
 """
 conftest.py — Fixtures compartidas para todos los tests.
-Los fixtures se adaptan automáticamente al ml_type elegido en cookiecutter.
+Los fixtures se adaptan automáticamente al ml_type elegido en 
 """
 import importlib
 import numpy as np
@@ -14,22 +14,26 @@ import pytest
 
 @pytest.fixture
 def sample_df():
-    """DataFrame genérico con 4 columnas numéricas (200 filas)."""
+    """DataFrame genérico con 8 columnas numéricas (200 filas)."""
     np.random.seed(42)
     return pd.DataFrame(
-        np.random.randn(200, 4),
-        columns=["feat_0", "feat_1", "feat_2", "feat_3"],
+        np.random.randn(200, 8),
+        columns=[f"feat_{i}" for i in range(8)],
     )
 
 
 
 @pytest.fixture
 def df_with_target(sample_df):
+
     """DataFrame con features numéricas + columna target binaria."""
     df = sample_df.copy()
     np.random.seed(42)
     df["target"] = (df["feat_0"] + df["feat_1"] > 0).astype(int)
     return df
+
+
+
 
 
 
@@ -51,6 +55,7 @@ def patch_paths(monkeypatch, tmp_path):
         "MODELS_DIR":         tmp_path / "models",
         "ARTIFACTS_DIR":      tmp_path / "models" / "artifacts",
         "FIGURES_DIR":        tmp_path / "reports" / "figures",
+        "REPORTS_DIR":        tmp_path / "reports",
         "PROCESSED_DATA_DIR": tmp_path / "data" / "processed",
         "RAW_DATA_DIR":       tmp_path / "data" / "raw",
         "RUNS_DIR":           tmp_path / "runs",
