@@ -21,16 +21,34 @@ ORDINAL_MAPPINGS: dict = {
     # },
 }
 
-COLS_TO_DROP: list = [
-    # "duration",     # fuga de datos
-    # "nr_employed",  # alta correlación con euribor3m
+COLS_TO_DROP = [
+    'Flow Bytes/s',
+    'Flow Packets/s',
+    'Fwd Header Length.1',
+    'Fwd Avg Bytes/Bulk', 'Fwd Avg Packets/Bulk', 'Fwd Avg Bulk Rate',
+    'Bwd Avg Bytes/Bulk', 'Bwd Avg Packets/Bulk', 'Bwd Avg Bulk Rate',
+    'Bwd PSH Flags', 'Bwd URG Flags',
+    'Bwd IAT Total',   # correlación ~1.0 con Fwd IAT Total
+    'Flow IAT Max',    # correlación ~1.0 con Fwd IAT Max
 ]
 
 # Columnas a las que aplicar transformación logarítmica (np.log1p).
 # Útil para features con distribución muy sesgada (skewness > 1).
 # Ejemplo: ["amount", "salary", "tenure_days"]
-LOGCOLS: list = []
-
+LOGCOLS = [
+    'Flow Duration',
+    'Fwd IAT Total',
+    'Fwd IAT Mean',
+    'Fwd IAT Std',
+    'Fwd IAT Max',
+    'Bwd IAT Mean',
+    'Bwd IAT Std',
+    'Bwd IAT Max',
+    'Idle Mean',
+    'Idle Max',
+    'Idle Min',
+    'Flow IAT Mean',
+]
 
 def preprocess_data(
     df: pd.DataFrame,
@@ -107,7 +125,6 @@ def preprocess_data(
 
     # 7. LabelEncoder
     encoders = {}  # guardamos un encoder por columna categórica para reproducibilidad
-    le = LabelEncoder()
     for col in cat_cols:
         le_col = LabelEncoder()
         X[col] = le_col.fit_transform(X[col].astype(str))
@@ -115,7 +132,11 @@ def preprocess_data(
 
     if y.dtype == object or str(y.dtype) == "category":
         le_target = LabelEncoder()
-        y = le_target.fit_transform(y.astype(str))
+        y = pd.Series(
+            le_target.fit_transform(y.astype(str)),
+            index=y.index,
+            name=target_col
+        )
         encoders["__target__"] = le_target
         joblib.dump(le_target, ARTIFACTS_DIR / "target_encoder.joblib")
         print("    Target codificado → target_encoder.joblib")
@@ -131,6 +152,9 @@ def preprocess_data(
         X, y, test_size=test_size, random_state=random_state, stratify=y,
     )
 
+    y_train = pd.Series(y_train)
+    y_test  = pd.Series(y_test)
+
     # Guardar nombres de features originales (antes de PCA) para test_model()
     joblib.dump(list(X.columns), ARTIFACTS_DIR / "feature_names.joblib")
     print(f"    feature_names.joblib guardado ({len(X.columns)} features)")
@@ -140,7 +164,7 @@ def preprocess_data(
     X_train = scaler.fit_transform(X_train)
     X_test  = scaler.transform(X_test)
     joblib.dump(scaler, ARTIFACTS_DIR / "scaler.joblib")
-    print(f"    Scaler guardado → scaler.joblib")
+    print("Scaler guardado → scaler.joblib")
 
     # threshold.joblib se genera DESPUÉS del entrenamiento, no aquí.
     # Descomenta find_best_threshold en predict_model.py (solo binaria) y
@@ -196,15 +220,21 @@ def _apply_pca(X_train, X_test, n_components):
 
 
 def _feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Transformaciones y nuevas variables antes del modelado.
-    Edita esta función según las necesidades del problema.
 
-    Ejemplos comunes:
-      df['was_contacted'] = df['pdays'].apply(lambda x: 0 if x == 999 else 1)
-      df['total_loans']   = df['housing'] + df['loan']
-    """
-    # --- Añade tus transformaciones aquí ---
+    # Limpiar infinitos del dataset CIC-IDS2017
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+    # Feature: tráfico de alta velocidad (PortScan y DoS tienden a tener muchos paquetes)
+    df['fwd_bwd_ratio'] = df['Total Fwd Packets'] / (df['Total Backward Packets'] + 1)
+
+    # Feature: tamaño medio del paquete completo
+    df['avg_packet_size'] = (
+        df['Total Length of Fwd Packets'] + df['Total Length of Bwd Packets']
+    ) / (df['Total Fwd Packets'] + df['Total Backward Packets'] + 1)
+
+    # Feature: flujo idle (conexiones legítimas tienen idle, ataques no)
+    df['has_idle'] = (df['Idle Mean'] > 0).astype(int)
+
     return df
 
 

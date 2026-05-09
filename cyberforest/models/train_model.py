@@ -114,44 +114,38 @@ def train_models(
 
     trained = {}
     for name, model in models.items():
+        mlflow.end_run()
         print(f"    [{name}] entrenando...")
 
-
         with mlflow.start_run(run_name=name):
-            # ── Parámetros ────────────────────────────────────────────────
-            params = {}
+            # ── Parámetros ────────────────────────────────────────────
             if hasattr(model, "get_params"):
                 params = {k: v for k, v in model.get_params().items()
-                          if v is not None and not callable(v)}
-            mlflow.log_params(params)
+                        if v is not None and not callable(v)}
+                mlflow.log_params(params)
             mlflow.log_param("task_type", "clasificacion")
             mlflow.log_param("model_name", name)
 
+            # ── Entrenamiento ─────────────────────────────────────────
+            model.fit(X_train, y_train)
 
-        model.fit(X_train, y_train)
+            # ── CV opcional ───────────────────────────────────────────
+            if cv_evaluate:
+                cv_score = cross_val_score(
+                    model, X_train, y_train, cv=5, scoring="f1_weighted"
+                ).mean()
+                print(f"      F1_weighted 5-fold CV: {cv_score:.3f}")
+                mlflow.log_metric("cv_score", cv_score)
 
-        if cv_evaluate:
+            # ── Guardar artefactos ────────────────────────────────────
+            joblib.dump(model, MODELS_DIR / f"{name}.joblib")
+            print(f"      Guardado → {name}.joblib")
 
-            cv_score = cross_val_score(
-                model, X_train, y_train, cv=5, scoring="f1_weighted"
-            ).mean()
-            print(f"      F1_weighted 5-fold CV: {cv_score:.3f}")
-
-
-
-            mlflow.log_metric("cv_score", cv_score)
-
-
-        joblib.dump(model, MODELS_DIR / f"{name}.joblib")
-        print(f"      Guardado → {name}.joblib")
-
-
-        mlflow.sklearn.log_model(
-            model, artifact_path=name,
-            registered_model_name=f"cyberforest_{name}",
-        )
-        mlflow.log_artifact(str(MODELS_DIR / f"{name}.joblib"))
-
+            mlflow.sklearn.log_model(
+                model, artifact_path=name,
+                registered_model_name=f"cyberforest_{name}",
+            )
+            mlflow.log_artifact(str(MODELS_DIR / f"{name}.joblib"))
 
         trained[name] = model
 
