@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
 from sklearn.decomposition import PCA
 import joblib
 from loguru import logger
-from cyberforest.utils.paths import PROCESSED_DATA_DIR, ARTIFACTS_DIR
+from cyberforest.utils.paths import PROCESSED_DATA_DIR, ARTIFACTS_DIR, SUBTYPE_MAP
 
 
 # ---------------------------------------------------------------------------
@@ -219,20 +219,42 @@ def _apply_pca(X_train, X_test, n_components):
     return X_train_pca, X_test_pca
 
 
+ATTACK_GROUPS = {
+    'BENIGN':              'BENIGN',
+    'DoS Hulk':            'DoS',
+    'DoS GoldenEye':       'DoS',
+    'DoS slowloris':       'DoS',
+    'DoS Slowhttptest':    'DoS',
+    'Heartbleed':          'DoS',
+    'PortScan':            'PortScan',
+    'FTP-Patator':         'Brute Force',
+    'SSH-Patator':         'Brute Force',
+    'Infiltration':        'Web Attack',
+}
+
 def _feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 
-    # Limpiar infinitos del dataset CIC-IDS2017
+    # Limpiar infinitos
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-    # Feature: tráfico de alta velocidad (PortScan y DoS tienden a tener muchos paquetes)
-    df['fwd_bwd_ratio'] = df['Total Fwd Packets'] / (df['Total Backward Packets'] + 1)
+    # Agrupamiento semántico de clases
+    if 'Label' in df.columns:
+        df['Label'] = df['Label'].map(
+            lambda x: next((v for k, v in ATTACK_GROUPS.items() if k in str(x)), 'Web Attack')
+        )
 
-    # Feature: tamaño medio del paquete completo
+    if 'Label' in df.columns:
+            raw_labels = {}
+            for group, subtypes in SUBTYPE_MAP.items():
+                mask = df['Label'].str.contains('|'.join(subtypes), na=False)
+                raw_labels[group] = df.loc[mask, 'Label'].values
+            joblib.dump(raw_labels, ARTIFACTS_DIR / 'raw_labels.joblib')
+
+    # Features derivadas
+    df['fwd_bwd_ratio'] = df['Total Fwd Packets'] / (df['Total Backward Packets'] + 1)
     df['avg_packet_size'] = (
         df['Total Length of Fwd Packets'] + df['Total Length of Bwd Packets']
     ) / (df['Total Fwd Packets'] + df['Total Backward Packets'] + 1)
-
-    # Feature: flujo idle (conexiones legítimas tienen idle, ataques no)
     df['has_idle'] = (df['Idle Mean'] > 0).astype(int)
 
     return df
