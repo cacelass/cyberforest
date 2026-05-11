@@ -252,4 +252,8 @@ def run_level2(X_train, y_train_encoded):
     print("Nivel 2 completado.")
     print("=" * 60)
 
+    # Guardar todos los cluster_models en un único joblib
+    joblib.dump(cluster_models, ARTIFACTS_DIR / 'cluster_models.joblib')
+    print("  cluster_models.joblib guardado")
+
     return cluster_models, mappings

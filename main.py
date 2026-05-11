@@ -84,6 +84,28 @@ def run_full_pipeline() -> None:
     print(f'Mejor modelo: {best.to_dict()}')
 
 
+def test_model() -> None:
+    print('=' * 60)
+    print('Probando modelo con muestras de test...')
+
+    from cyberforest.models.cluster_model import predict_hierarchical
+    from cyberforest.models.train_model import load_models
+    trained = load_models(["LightGBM"])
+
+    # Cargar datos de test
+    from cyberforest.utils.paths import PROCESSED_DATA_DIR, ARTIFACTS_DIR
+    import joblib
+
+    # Cargar modelos de clustering y mapeos
+    cluster_models = joblib.load(ARTIFACTS_DIR / 'cluster_models.joblib')
+    mappings       = joblib.load(ARTIFACTS_DIR / 'cluster_mappings.joblib')
+
+    print("\n Rellene las características de la muestra a clasificar (ejemplo: 0.5,1.2,0.3,...):")
+    # coger variables mas significativas del modelo lightbmm gini > 1000
+    # en caso de que sea ciberataque, explicar que tipo de ataque es y que subtipo es y pk lo sabe el modelo, en caso de que sea benigno,
+    # explicar que es benigno y pk lo sabe el modelo, diciendo las características que más pesan para esa predicción y su valor en la muestra introducida
+    va1 = input("Características: ").strip()
+
 def main():
     print('=' * 60)
     accion = input('Ejecutar pipeline completo (0) o probar el modelo (1)? (0/1): ').strip()
