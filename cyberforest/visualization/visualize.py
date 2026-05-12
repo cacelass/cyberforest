@@ -1,4 +1,3 @@
-
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -14,6 +13,8 @@ plt.rcParams["figure.figsize"] = (12, 7)
 
 def plot_distributions(df: pd.DataFrame, target_col: str = None) -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    # Limpiar inf antes de plotear (el dataset CICIDS tiene inf en algunas columnas)
+    df = df.replace([np.inf, -np.inf], np.nan)
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     if target_col in num_cols:
         num_cols.remove(target_col)
@@ -43,6 +44,7 @@ def plot_distributions(df: pd.DataFrame, target_col: str = None) -> None:
 
 def plot_correlation_matrix(df: pd.DataFrame) -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    df = df.replace([np.inf, -np.inf], np.nan)
     corr = df.select_dtypes(include=[np.number]).corr()
     fig, ax = plt.subplots(figsize=(max(8, len(corr) * 0.8), max(6, len(corr) * 0.7)))
     sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", linewidths=0.5, ax=ax)
@@ -200,5 +202,3 @@ def plot_pairplot(df: pd.DataFrame, target_col: str, max_features: int = 6) -> N
     g.figure.savefig(FIGURES_DIR / "pairplot.png", dpi=120, bbox_inches="tight")
     plt.close(g.figure)
     print("    pairplot.png guardado")
-
-
