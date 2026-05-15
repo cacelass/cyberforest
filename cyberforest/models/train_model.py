@@ -1,32 +1,13 @@
 
 import numpy as np
 import joblib
-
-
-
 from sklearn.ensemble import RandomForestClassifier
-
-
-
-
 from sklearn.model_selection import cross_val_score
-
-
-
-
-
 from lightgbm import LGBMClassifier
-
-
-
-
 import mlflow
 import mlflow.sklearn
 from mlflow.tracking import MlflowClient
-
-
 from cyberforest.utils.paths import MODELS_DIR
-
 
 # ---------------------------------------------------------------------------
 # Configuración de modelos
@@ -36,37 +17,15 @@ def _build_models() -> dict:
     """
     Define los modelos a entrenar.
     Tarea: clasificacion
-
-
-
-
-
-
     RandomForest       → ensemble robusto con feature importances.
-
-
-
     LightGBM           → leaf-wise boosting. Más rápido en datasets grandes.
-
-
     """
     models = {}
-
-
-
-
-
 
     models["RandomForest"] = RandomForestClassifier(
         n_estimators=200, max_depth=10, max_features="sqrt",
         max_samples=0.8, class_weight="balanced", random_state=42, n_jobs=-1,
     )
-
-
-
-
-
-
 
     models["LightGBM"] = LGBMClassifier(
         n_estimators=300, num_leaves=31, learning_rate=0.05,
@@ -75,12 +34,7 @@ def _build_models() -> dict:
         random_state=42, n_jobs=-1, verbose=-1,
     )
 
-
-
     return models
-
-
-
 
 def train_models(
     X_train,
@@ -90,15 +44,11 @@ def train_models(
 ) -> dict:
     """
     Entrena modelos de clasificacion y los guarda en models/.
-
-
     Métrica CV: F1_weighted (5-fold).
-
 
     MLflow: cada modelo se loguea como un run independiente dentro del
     experimento 'cyberforest'. Los artifacts (.joblib) se registran
     en el Model Registry bajo el nombre del modelo.
-
 
     Returns
     -------
@@ -107,10 +57,7 @@ def train_models(
     print("--> Entrenando modelos de clasificacion...")
     models = _build_models()
 
-
-
     mlflow.set_experiment("cyberforest")
-
 
     trained = {}
     for name, model in models.items():

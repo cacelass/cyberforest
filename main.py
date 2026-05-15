@@ -33,7 +33,7 @@ THRESHOLD    = DECISION_THRESHOLD
 USE_PCA      = None   # ← ajusta: None | 0.95 | 10
 
 # Umbral de importancia para filtrar features significativas del LightGBM
-GINI_THRESHOLD = 1000
+GINI_THRESHOLD = 500
 
 
 def run_full_pipeline() -> None:
@@ -204,6 +204,85 @@ def _explain_attack_group(grupo: str, subtipo: str) -> None:
     if desc_sub and subtipo != grupo:
         print(f'  Subtipo específico → {desc_sub}')
 
+def test_model_dftest() -> None:
+    print('=' * 60)
+    print('Probando modelo con muestra de df_test...')
+
+    import joblib
+    import pandas as pd
+
+    from cyberforest.models.cluster_model import predict_hierarchical
+    from cyberforest.models.train_model import load_models
+    from cyberforest.features.build_features import process_input
+    from cyberforest.utils.paths import ARTIFACTS_DIR, PROCESSED_DATA_DIR
+
+    # Cargar modelo LightGBM entrenado
+    trained = load_models(["LightGBM"])
+    if "LightGBM" not in trained:
+        print("  No se encontró LightGBM.joblib. Ejecuta primero el pipeline (opción 0).")
+        return
+    lgbm = trained["LightGBM"]
+
+    # Cargar modelos de clustering y mapeos
+    cluster_path  = ARTIFACTS_DIR / 'cluster_models.joblib'
+    mappings_path = ARTIFACTS_DIR / 'cluster_mappings.joblib'
+
+    if cluster_path.exists():
+        cluster_models = joblib.load(cluster_path)
+    else:
+        print("  No se encontraron modelos de clustering. Ejecuta primero el pipeline completo (opción 0).")
+        return
+
+    if not mappings_path.exists():
+        print("  No se encontró cluster_mappings.joblib. Ejecuta primero el pipeline completo (opción 0).")
+        return
+    mappings = joblib.load(mappings_path)
+
+    # Cargar nombres de features
+    feat_path = ARTIFACTS_DIR / 'feature_names.joblib'
+    if feat_path.exists():
+        feature_names = joblib.load(feat_path)
+    else:
+        x_train_path = PROCESSED_DATA_DIR / 'X_train.csv'
+        if x_train_path.exists():
+            feature_names = pd.read_csv(x_train_path).columns.tolist()
+        else:
+            print("  No se encontró feature_names.joblib ni X_train.csv.")
+            return
+    # Cargar datos de test para seleccionar una muestra aleatoria
+    X_test = pd.read_csv(PROCESSED_DATA_DIR / 'X_test.csv')
+    y_test = pd.read_csv(PROCESSED_DATA_DIR / 'y_test.csv').squeeze()
+    X_test.columns = feature_names
+    estado = 's'
+    while estado == "s":
+        # Seleccionar una muestra aleatoria de X_test para probar la predicción
+
+        fila = X_test.sample(1, random_state=None)# aleatoria cada vez
+        idx = fila.index[0]
+        etiqueta_real = y_test.loc[idx]
+        print(f"\n  Muestra seleccionada (índice {idx}, etiqueta real: {etiqueta_real}):")
+        print(fila)
+
+        # Obtener las features significativas para esta muestra
+        sig_features = _get_significant_features(lgbm, feature_names, GINI_THRESHOLD)
+
+        # Obtener los valores de las features significativas para esta muestra
+        sample_values = {feat: fila[feat].values[0] for feat, _ in sig_features}
+
+        # ── Predicción jerárquica ─────────────────────────────────────
+        try:
+            pred_result = predict_hierarchical(fila, lgbm, cluster_models, mappings)
+        except Exception as e:
+            print(f"\n  Error en predicción jerárquica: {e}")
+            return
+
+        # ── Probabilidades del modelo base ────────────────────────────
+        proba = lgbm.predict_proba(fila)[0].tolist()
+
+        # ── Explicación ───────────────────────────────────────────────
+        _explain_prediction(pred_result, proba, sig_features, sample_values)
+
+        estado = input("\n¿Quieres probar otra muestra de test? (s/n): ").strip().lower() == 's'
 
 def test_model() -> None:
     print('=' * 60)
@@ -279,8 +358,6 @@ def test_model() -> None:
         )
         sig_features = all_imp[:10]
 
-    sig_names = [f for f, _ in sig_features]
-
     # ── 4. Pedir valores al usuario ──────────────────────────────────
     print()
     print(f"  El modelo usa {len(feature_names)} features en total.")
@@ -290,15 +367,17 @@ def test_model() -> None:
 
     print()
     print("  Introduce el valor de cada feature significativa.")
-    print("  (Deja en blanco para usar 0.0 como valor por defecto)\n")
+    print("  (Deja en blanco para usar la media como valor por defecto)\n")
 
     row = {feat: 0.0 for feat in feature_names}   # inicializar todo a 0
     sample_values = {}
 
+    feature_means = joblib.load(ARTIFACTS_DIR / "feature_means.joblib")
+
     for feat, imp in sig_features:
         raw = input(f"  {feat}: ").strip()
         try:
-            val = float(raw) if raw else 0.0
+            val = float(raw) if raw else feature_means.get(feat, 0.0)  # usar media del entrenamiento si el usuario deja en blanco
         except ValueError:
             val = 0.0
         row[feat] = val
@@ -329,11 +408,13 @@ def test_model() -> None:
 
 def main():
     print('=' * 60)
-    accion = input('Ejecutar pipeline completo (0) o probar el modelo (1)? (0/1): ').strip()
+    accion = input('Ejecutar pipeline completo (0) o probar el modelo (1) o probar con datos de test (2)? (0/1/2): ').strip()
     if accion == '0':
         run_full_pipeline()
     elif accion == '1':
         test_model()
+    elif accion == '2':
+        test_model_dftest()
     else:
         print('Opción no válida. Ejecutando pipeline completo por defecto.')
         run_full_pipeline()

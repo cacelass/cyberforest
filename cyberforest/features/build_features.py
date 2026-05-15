@@ -84,6 +84,7 @@ def preprocess_data(
     -------
     X_train, X_test, y_train, y_test  (arrays numpy)
     """
+    from imblearn.over_sampling import SMOTE
     print(f"--> Preprocesando datos (target='{target_col}', scaler='{scaler_type}', PCA={use_pca})...")
 
     df = df.copy()
@@ -111,6 +112,16 @@ def preprocess_data(
     if cols_present:
         df.drop(columns=cols_present, inplace=True)
         print(f"    Columnas eliminadas: {cols_present}")
+
+    df[df["Label"] == "BENIGN"].isnull().any(axis=1).sum()
+
+    #borro el 90% de benignos para reducir el desbalance
+    benign = df[df["Label"] == "BENIGN"].sample(frac=0.1, random_state=42)
+    #borro el 50% de ataques DoS Hulk para reducir el desbalance
+    ataques_dos_hulk = df[df["Label"] == "DoS Hulk"].sample(frac=0.5, random_state=42)
+    ataques = df[(df["Label"] != "BENIGN") & (df["Label"] != "DoS Hulk")]
+
+    df = pd.concat([benign, ataques_dos_hulk, ataques])
 
     # 5. X / y
     X = df.drop(columns=[target_col])
@@ -158,6 +169,18 @@ def preprocess_data(
     # Guardar nombres de features originales (antes de PCA) para test_model()
     joblib.dump(list(X.columns), ARTIFACTS_DIR / "feature_names.joblib")
     print(f"    feature_names.joblib guardado ({len(X.columns)} features)")
+
+    train_means = X.mean(numeric_only=True).to_dict()
+    joblib.dump(train_means, ARTIFACTS_DIR / "feature_means.joblib")
+    print("    feature_means.joblib guardado (medias numéricas para relleno de nulos en inferencia)")
+
+    print(le_target.classes_)
+
+    # creo datos sintéticos para la clase minoritaria "Web Attack" usando SMOTE
+    sm = SMOTE(sampling_strategy={
+        le_target.transform(["Web Attack"])[0]: 4000
+    }, random_state=42)
+    X_train, y_train = sm.fit_resample(X_train, y_train)
 
     # 9. Escalado
     scaler = MinMaxScaler() if scaler_type == "minmax" else StandardScaler()
@@ -316,6 +339,7 @@ def process_input(df_new: pd.DataFrame) -> np.ndarray:
     """
     import os
     scaler   = joblib.load(ARTIFACTS_DIR / "scaler.joblib")
+    train_means = joblib.load(ARTIFACTS_DIR / "feature_means.joblib")
     encoders = joblib.load(ARTIFACTS_DIR / "encoders.joblib") if (ARTIFACTS_DIR / "encoders.joblib").exists() else {}
 
     df_new = df_new.copy()
@@ -342,7 +366,8 @@ def process_input(df_new: pd.DataFrame) -> np.ndarray:
             df_new[col] = le.fit_transform(df_new[col].astype(str))
 
     num_cols = df_new.select_dtypes(include=[np.number]).columns
-    df_new[num_cols] = df_new[num_cols].fillna(df_new[num_cols].mean())
+    # df_new[num_cols] = df_new[num_cols].fillna(df_new[num_cols].mean())
+    df_new[num_cols] = df_new[num_cols].fillna(train_means)  # usar medias a lo nulos del input
 
     X = scaler.transform(df_new)
 

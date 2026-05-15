@@ -127,19 +127,18 @@ def train_cluster_models(subsets, optimal_ks):
     return cluster_models
 
 def map_clusters_to_subtypes(cluster_models, subsets, y_train_encoded):
-    raw_labels = joblib.load(ARTIFACTS_DIR / 'raw_labels.joblib')
-    encoders   = joblib.load(ARTIFACTS_DIR / 'encoders.joblib')
-    le_target  = encoders['__target__']
-    y_named    = le_target.inverse_transform(y_train_encoded)
+    encoders  = joblib.load(ARTIFACTS_DIR / 'encoders.joblib')
+    le_target = encoders['__target__']
+    y_named   = le_target.inverse_transform(y_train_encoded)
 
     mappings = {}
 
     for group, km in cluster_models.items():
         X_subset = subsets[group]
 
-        # Índices del subset dentro de y_train
-        group_indices = np.where(y_named == group)[0]
-        group_raw     = raw_labels[group][:len(group_indices)]
+        # Etiquetas del train que pertenecen a este grupo — mismo tamaño que X_subset
+        group_mask = y_named == group
+        group_raw  = y_named[group_mask]  # shape == (len(X_subset),)
 
         # Predecir cluster
         cluster_labels = km.predict(X_subset)

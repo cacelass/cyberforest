@@ -1,4 +1,3 @@
-
 """
 predict_model.py — Evaluación de modelos supervisado.
 Tarea: clasificacion
@@ -9,27 +8,17 @@ import joblib
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-
 from sklearn.metrics import (
     accuracy_score, f1_score, precision_score, recall_score,
     roc_auc_score, confusion_matrix, classification_report,
     ConfusionMatrixDisplay,
 )
-
-
-
 import mlflow
 import mlflow.sklearn
-
-
 from cyberforest.utils.paths import FIGURES_DIR, MODELS_DIR, REPORTS_DIR
-
 
 # Umbral de decisión. Bajar (e.g. 0.3) aumenta recall de clase minoritaria.
 DECISION_THRESHOLD: float = 0.5
-
-
 
 def evaluate_models(
     models: dict,
@@ -68,12 +57,15 @@ def evaluate_models(
         print(f"\n--- {name} ---")
 
 
-        if threshold != 0.5 and hasattr(model, "predict_proba"):
+        n_classes = len(np.unique(y_test))
+        if threshold != 0.5 and hasattr(model, "predict_proba") and n_classes == 2:
+            # Umbral ajustado solo tiene sentido en clasificación binaria
             proba_test   = model.predict_proba(X_test)[:, 1]
             y_pred_test  = (proba_test >= threshold).astype(int)
             proba_train  = model.predict_proba(X_train)[:, 1]
             y_pred_train = (proba_train >= threshold).astype(int)
         else:
+            # Multiclase: argmax sobre todas las clases (comportamiento correcto)
             y_pred_test  = model.predict(X_test)
             y_pred_train = model.predict(X_train)
 
@@ -296,17 +288,19 @@ def test_model() -> None:
     # ── 6. Predecir ────────────────────────────────────────────────────
     print(f"\n{'='*50}")
     if hasattr(model, "predict_proba"):
-        proba = model.predict_proba(X_new)[0]
-        pred  = int(proba[1] >= threshold)
+        proba      = model.predict_proba(X_new)[0]
+        classes    = model.classes_
+        pred_idx   = int(np.argmax(proba))          # clase con mayor probabilidad
+        pred_label = classes[pred_idx]              # etiqueta real (ej. "DoS", "BENIGN")
+        proba_dict = {str(cls): round(float(p), 4) for cls, p in zip(classes, proba)}
         print(f"  Modelo     : {model_name}")
-        print(f"  Umbral     : {threshold:.4f}")
-        print(f"  Predicción : {pred}")
-        print(f"  Probabilidades: {dict(enumerate(proba.round(4).tolist()))}")
+        print(f"  Predicción : {pred_label}")
+        print(f"  Probabilidades:")
+        for cls, p in sorted(proba_dict.items(), key=lambda x: -x[1]):
+            bar = "█" * int(p * 20)
+            print(f"    {cls:<20} {p:.4f}  {bar}")
     else:
-        pred = model.predict(X_new)[0]
+        pred_label = model.predict(X_new)[0]
         print(f"  Modelo     : {model_name}")
-        print(f"  Predicción : {pred}")
+        print(f"  Predicción : {pred_label}")
     print(f"{'='*50}\n")
-
-
-
