@@ -12,6 +12,7 @@ from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
 
 from cyberforest.utils.paths import MODELS_DIR, ARTIFACTS_DIR, FIGURES_DIR
+from cyberforest.features.build_features import ATTACK_GROUPS
 
 
 # ---------------------------------------------------------------------------
@@ -29,14 +30,6 @@ SUBTYPE_MAP = {
 # Extraer subsets por grupo
 # ---------------------------------------------------------------------------
 def get_group_subsets(X_train, y_train_encoded):
-    """
-    Extrae los subsets de X_train para cada grupo de ataque.
-    Excluye BENIGN — no necesita subclustering.
-    
-    Returns
-    -------
-    dict : {nombre_grupo: X_subset}
-    """
     encoders  = joblib.load(ARTIFACTS_DIR / 'encoders.joblib')
     le_target = encoders['__target__']
     y_named   = le_target.inverse_transform(y_train_encoded)
@@ -50,20 +43,8 @@ def get_group_subsets(X_train, y_train_encoded):
 
     return subsets
 
+
 def find_optimal_k(X_subset, k_range=range(2, 7), name=""):
-    """
-    Busca la k óptima para KMeans usando método del codo y silhouette score.
-
-    Parameters
-    ----------
-    X_subset  : array con las muestras del grupo
-    k_range   : rango de k a explorar
-    name      : nombre del grupo (para el título del gráfico)
-
-    Returns
-    -------
-    int : k óptima según silhouette score
-    """
     inertias    = []
     silhouettes = []
 
@@ -75,7 +56,6 @@ def find_optimal_k(X_subset, k_range=range(2, 7), name=""):
         silhouettes.append(sil)
         print(f"    k={k} | inertia={km.inertia_:.0f} | silhouette={sil:.3f}")
 
-    # Plot
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
     axes[0].plot(list(k_range), inertias, 'o-', color='steelblue')
     axes[0].set_title(f'{name} — Método del codo')
@@ -95,19 +75,8 @@ def find_optimal_k(X_subset, k_range=range(2, 7), name=""):
     print(f"    → k óptima: {best_k}")
     return best_k
 
+
 def train_cluster_models(subsets, optimal_ks):
-    """
-    Entrena un KMeans por grupo con la k óptima encontrada.
-
-    Parameters
-    ----------
-    subsets    : dict {grupo: X_subset} — salida de get_group_subsets
-    optimal_ks : dict {grupo: k}        — salida de find_optimal_k por grupo
-
-    Returns
-    -------
-    dict : {grupo: modelo KMeans entrenado}
-    """
     cluster_models = {}
 
     for group, X_subset in subsets.items():
@@ -117,7 +86,6 @@ def train_cluster_models(subsets, optimal_ks):
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
         km.fit(X_subset)
 
-        # Guardar modelo
         path = MODELS_DIR / f"kmeans_{group.replace(' ', '_')}.joblib"
         joblib.dump(km, path)
         print(f"    Guardado → {path.name}")
@@ -126,27 +94,30 @@ def train_cluster_models(subsets, optimal_ks):
 
     return cluster_models
 
+
 def map_clusters_to_subtypes(cluster_models, subsets, y_train_encoded):
     encoders  = joblib.load(ARTIFACTS_DIR / 'encoders.joblib')
     le_target = encoders['__target__']
     y_named   = le_target.inverse_transform(y_train_encoded)
 
-    mappings = {}
+    mappings  = {}
+    group_raw = joblib.load(ARTIFACTS_DIR / "label_original_train.joblib")
 
     for group, km in cluster_models.items():
         X_subset = subsets[group]
 
-        # Etiquetas del train que pertenecen a este grupo — mismo tamaño que X_subset
-        group_mask = y_named == group
-        group_raw  = y_named[group_mask]  # shape == (len(X_subset),)
+        # Filtrar label_original_train por grupo y resetear índice
+        group_mask         = group_raw.map(ATTACK_GROUPS) == group
+        group_raw_filtered = group_raw[group_mask].reset_index(drop=True)
 
-        # Predecir cluster
-        cluster_labels = km.predict(X_subset)
+        # Predecir solo sobre muestras reales (sin sintéticos SMOTE)
+        X_real = X_subset[:len(group_raw_filtered)]
+        cluster_labels = km.predict(X_real)
 
         cluster_map = {}
         for cluster_id in range(km.n_clusters):
             mask     = cluster_labels == cluster_id
-            subtypes = group_raw[mask]
+            subtypes = group_raw_filtered[mask]
             if len(subtypes) == 0:
                 cluster_map[cluster_id] = group
                 continue
@@ -160,37 +131,19 @@ def map_clusters_to_subtypes(cluster_models, subsets, y_train_encoded):
     joblib.dump(mappings, ARTIFACTS_DIR / 'cluster_mappings.joblib')
     print(f"\n  Mappings guardados → cluster_mappings.joblib")
 
-    return cluster_models, mappings  # ← asegúrate que esta línea existe
+    return cluster_models, mappings
+
 
 def predict_hierarchical(X_new, level1_model, cluster_models, mappings):
-    """
-    Predicción jerárquica completa.
-    Nivel 1: clasifica el grupo (BENIGN / DoS / PortScan / Brute Force / Web Attack)
-    Nivel 2: identifica el subtipo dentro del grupo con KMeans
-
-    Parameters
-    ----------
-    X_new          : array con las features del flujo a clasificar
-    level1_model   : modelo LightGBM entrenado (Nivel 1)
-    cluster_models : dict {grupo: KMeans} — salida de train_cluster_models
-    mappings       : dict {grupo: {cluster_id: subtipo}} — salida de map_clusters_to_subtypes
-
-    Returns
-    -------
-    dict : {grupo: str, subtipo: str}
-    """
     encoders  = joblib.load(ARTIFACTS_DIR / 'encoders.joblib')
     le_target = encoders['__target__']
 
-    # Nivel 1 — predecir grupo
     group_encoded = level1_model.predict(X_new)[0]
     group_name    = le_target.inverse_transform([group_encoded])[0]
 
-    # Si es BENIGN no hace falta Nivel 2
     if group_name == 'BENIGN':
         return {'grupo': 'BENIGN', 'subtipo': 'BENIGN'}
 
-    # Nivel 2 — predecir subtipo dentro del grupo
     if group_name in cluster_models:
         km         = cluster_models[group_name]
         cluster_id = km.predict(X_new)[0]
@@ -200,50 +153,28 @@ def predict_hierarchical(X_new, level1_model, cluster_models, mappings):
 
     return {'grupo': group_name, 'subtipo': subtipo}
 
+
 def run_level2(X_train, y_train_encoded):
-    """
-    Orquesta el pipeline completo del Nivel 2.
-
-    1. Extrae subsets por grupo
-    2. Busca k óptima por grupo
-    3. Entrena KMeans por grupo
-    4. Mapea clusters a subtipos
-
-    Parameters
-    ----------
-    X_train          : array con features de entrenamiento
-    y_train_encoded  : array con etiquetas numéricas del train
-
-    Returns
-    -------
-    cluster_models : dict {grupo: KMeans}
-    mappings       : dict {grupo: {cluster_id: subtipo}}
-    """
     print("=" * 60)
     print("NIVEL 2 — Clustering jerárquico por grupo")
     print("=" * 60)
 
-    # 1. Extraer subsets
     print("\n1. Extrayendo subsets por grupo...")
     subsets = get_group_subsets(X_train, y_train_encoded)
 
-    # 2. Buscar k óptima por grupo
     print("\n2. Buscando k óptima...")
     optimal_ks = {}
     for group, X_subset in subsets.items():
         print(f"\n  [{group}]")
-        # PortScan tiene un solo subtipo real — k=1 no tiene sentido para KMeans
         if group == 'PortScan':
             print(f"    → k=1 (un solo subtipo real, no necesita clustering)")
             optimal_ks[group] = 1
             continue
         optimal_ks[group] = find_optimal_k(X_subset, k_range=range(2, 7), name=group)
 
-    # 3. Entrenar KMeans
     print("\n3. Entrenando KMeans por grupo...")
     cluster_models = train_cluster_models(subsets, optimal_ks)
 
-    # 4. Mapear clusters a subtipos
     print("\n4. Mapeando clusters a subtipos reales...")
     cluster_models, mappings = map_clusters_to_subtypes(cluster_models, subsets, y_train_encoded)
 
@@ -251,7 +182,6 @@ def run_level2(X_train, y_train_encoded):
     print("Nivel 2 completado.")
     print("=" * 60)
 
-    # Guardar todos los cluster_models en un único joblib
     joblib.dump(cluster_models, ARTIFACTS_DIR / 'cluster_models.joblib')
     print("  cluster_models.joblib guardado")
 

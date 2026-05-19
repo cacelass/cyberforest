@@ -42,11 +42,11 @@ def run_full_pipeline() -> None:
     df = load_data()
     print(f'   Shape: {df.shape}')
 
-    print('\n2. EDA visual...')
-    plot_distributions(df, target_col=TARGET_COL)
-    plot_correlation_matrix(df)
-    plot_class_balance(df, target_col=TARGET_COL)
-    plot_categorical_vs_target(df, target_col=TARGET_COL)
+    # print('\n2. EDA visual...')
+    # plot_distributions(df, target_col=TARGET_COL)
+    # plot_correlation_matrix(df)
+    # plot_class_balance(df, target_col=TARGET_COL)
+    # plot_categorical_vs_target(df, target_col=TARGET_COL)
 
     print('\n3. Preprocesando...')
     X_train, X_test, y_train, y_test = preprocess_data(
@@ -254,7 +254,7 @@ def test_model_dftest() -> None:
     y_test = pd.read_csv(PROCESSED_DATA_DIR / 'y_test.csv').squeeze()
     X_test.columns = feature_names
     estado = 's'
-    while estado == "s":
+    while estado:
         # Seleccionar una muestra aleatoria de X_test para probar la predicción
 
         fila = X_test.sample(1, random_state=None)# aleatoria cada vez

@@ -166,6 +166,10 @@ def preprocess_data(
     y_train = pd.Series(y_train)
     y_test  = pd.Series(y_test)
 
+    label_original = joblib.load(ARTIFACTS_DIR / "label_original.joblib")
+    label_original_train = label_original.loc[y_train.index]
+    joblib.dump(label_original_train, ARTIFACTS_DIR / "label_original_train.joblib")
+
     # Guardar nombres de features originales (antes de PCA) para test_model()
     joblib.dump(list(X.columns), ARTIFACTS_DIR / "feature_names.joblib")
     print(f"    feature_names.joblib guardado ({len(X.columns)} features)")
@@ -260,18 +264,13 @@ def _feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     # Limpiar infinitos
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
+    joblib.dump(df['Label'].copy(), ARTIFACTS_DIR / "label_original.joblib")
+
     # Agrupamiento semántico de clases
     if 'Label' in df.columns:
         df['Label'] = df['Label'].map(
             lambda x: next((v for k, v in ATTACK_GROUPS.items() if k in str(x)), 'Web Attack')
         )
-
-    if 'Label' in df.columns:
-            raw_labels = {}
-            for group, subtypes in SUBTYPE_MAP.items():
-                mask = df['Label'].str.contains('|'.join(subtypes), na=False)
-                raw_labels[group] = df.loc[mask, 'Label'].values
-            joblib.dump(raw_labels, ARTIFACTS_DIR / 'raw_labels.joblib')
 
     # Features derivadas
     df['fwd_bwd_ratio'] = df['Total Fwd Packets'] / (df['Total Backward Packets'] + 1)

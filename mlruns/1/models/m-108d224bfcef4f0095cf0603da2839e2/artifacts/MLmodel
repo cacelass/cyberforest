@@ -1,0 +1,23 @@
+artifact_path: /home/cacelas/Documentos/Proyects/PROCESO/cyberforest/mlruns/1/models/m-108d224bfcef4f0095cf0603da2839e2/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.13.5
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.11.1
+model_id: m-108d224bfcef4f0095cf0603da2839e2
+model_size_bytes: 4838658
+model_uuid: m-108d224bfcef4f0095cf0603da2839e2
+prompts: null
+run_id: 9e3d102a48e548008056e19472d246be
+utc_time_created: '2026-05-18 19:57:37.499939'
